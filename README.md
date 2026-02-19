@@ -51,6 +51,8 @@ memory --action list
 
 ## First Run Flow
 
+**Important:** First setup must be done in OpenCode **build mode** (not plan mode). AI cannot write files in plan mode.
+
 1. Plugin detects no MEMORY.md exists
 2. Creates BOOTSTRAP.md with setup instructions
 3. AI reads BOOTSTRAP.md and asks user questions interactively

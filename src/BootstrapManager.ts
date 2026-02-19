@@ -1,6 +1,12 @@
 import { MemoryManager } from "./MemoryManager.js";
 
-const BOOTSTRAP_TEMPLATE = `# BOOTSTRAP.md - First Time Setup
+const BOOTSTRAP_TEMPLATE = (
+  bootstrapPath: string,
+) => `# BOOTSTRAP.md - First Time Setup
+
+**IMPORTANT:** First setup must be done in OpenCode **build mode** (not plan mode). AI cannot write files in plan mode.
+
+**Bootstrap file location:** \`${bootstrapPath}\`
 
 This is your first run! Let's set up your memory system.
 
@@ -34,7 +40,7 @@ Ask the user:
 
 Once you've collected all the information:
 1. Write to IDENTITY.md, USER.md, and MEMORY.md using the memory tool
-2. Delete this BOOTSTRAP.md file manually using bash: \`rm <path-to-BOOTSTRAP.md>\`
+2. Delete this BOOTSTRAP.md file: \`rm ${bootstrapPath}\`
 3. Confirm setup is complete to the user
 
 Be conversational and natural. Don't overwhelm with all questions at once.
@@ -89,9 +95,10 @@ export class BootstrapManager {
   }
 
   private copyTemplates(): void {
+    const bootstrapPath = this.memoryManager.getBootstrapPath();
     this.memoryManager.writeFile(
-      this.memoryManager.getBootstrapPath(),
-      BOOTSTRAP_TEMPLATE,
+      bootstrapPath,
+      BOOTSTRAP_TEMPLATE(bootstrapPath),
     );
     this.memoryManager.writeFile(
       this.memoryManager.getMemoryPath(),
