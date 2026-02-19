@@ -11,17 +11,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install
+
+      - run: bun run typecheck
+
+      - run: bun run build
+
+      - name: Setup Node.js for npm publish
+        uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-          cache: 'npm'
-
-      - run: npm ci
-
-      - run: npm run build
-
-      - run: npm run format:check
 
       - name: Publish to npm
         run: npm publish --access public
