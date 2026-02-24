@@ -66,6 +66,18 @@ MEMORY.md, IDENTITY.md, and USER.md are automatically injected into the system p
 
 Daily logs must be accessed via the `memory` tool.
 
+## Idle Threshold
+
+The plugin automatically tracks session idle cycles and prompts memory updates every 3 idle events to prevent context loss during long sessions.
+
+**Threshold:** Hardcoded to 3 (configurable in future)
+
+**Reset conditions:**
+- After memory prompt is shown
+- When session is deleted
+
+This ensures regular memory checkpoints without interrupting flow.
+
 ## License
 
 MIT
