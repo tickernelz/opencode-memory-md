@@ -57,19 +57,23 @@ export const MemoryPlugin: Plugin = async (ctx: PluginInput) => {
     event: async ({ event }) => {
       if (event.type === "session.idle") {
         const props = event as any;
-        const sessionId = props.properties?.sessionID;
+        const sessionId = props.properties?.sessionID as string | undefined;
         if (!sessionId) return;
 
         sessionStateManager.incrementIdle(sessionId);
 
         if (sessionStateManager.shouldPrompt(sessionId)) {
           sessionStateManager.reset(sessionId);
-          await ctx.client.app.log({
+
+          await ctx.client.session.prompt({
+            path: { id: sessionId },
             body: {
-              service: "memory-plugin",
-              level: "info",
-              message: `Memory check triggered after 3 idle cycles`,
-              extra: { sessionId },
+              parts: [
+                {
+                  type: "text",
+                  text: MEMORY_CHECK_PROMPT(3),
+                },
+              ],
             },
           });
         }
@@ -77,7 +81,7 @@ export const MemoryPlugin: Plugin = async (ctx: PluginInput) => {
 
       if (event.type === "session.deleted") {
         const props = event as any;
-        const sessionId = props.properties?.sessionID;
+        const sessionId = props.properties?.sessionID as string | undefined;
         if (sessionId) {
           sessionStateManager.cleanup(sessionId);
         }
