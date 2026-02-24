@@ -1,6 +1,6 @@
 {
   "name": "@zhafron/opencode-memory-md",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Simple markdown-based memory plugin for OpenCode",
   "type": "module",
   "main": "dist/index.js",
