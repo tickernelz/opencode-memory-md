@@ -25,3 +25,8 @@ export interface ContextFile {
   name: string;
   content: string;
 }
+
+export interface SessionState {
+  idleCount: number;
+  lastPromptotedAt?: number;
+}
