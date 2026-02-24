@@ -77,3 +77,15 @@ export const BOOTSTRAP_INSTRUCTIONS = [
   "Ask the user questions interactively, then write to MEMORY.md, IDENTITY.md, and USER.md.",
   "After setup is complete, delete BOOTSTRAP.md using the memory tool or filesystem.",
 ].join("\n");
+
+export const MEMORY_CHECK_PROMPT = (count: number) => `
+
+## Memory Check
+
+Session has been idle ${count} times. Consider updating memory if:
+- Important decisions were made → MEMORY.md
+- User preferences discovered → USER.md  
+- Daily progress to log → daily/YYYY-MM-DD.md
+
+Use the memory tool to update, or continue working.
+`;

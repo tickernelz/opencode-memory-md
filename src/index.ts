@@ -3,15 +3,18 @@ import { tool } from "@opencode-ai/plugin";
 import { loadConfig } from "./config.js";
 import { MemoryManager } from "./MemoryManager.js";
 import { BootstrapManager } from "./BootstrapManager.js";
+import { SessionStateManager } from "./SessionStateManager.js";
 import {
   MEMORY_AWARENESS_INSTRUCTIONS,
   BOOTSTRAP_INSTRUCTIONS,
+  MEMORY_CHECK_PROMPT,
 } from "./memoryInstructions.js";
 
 export const MemoryPlugin: Plugin = async (ctx: PluginInput) => {
   const config = loadConfig();
   const memoryManager = new MemoryManager(config);
   const bootstrapManager = new BootstrapManager(memoryManager);
+  const sessionStateManager = new SessionStateManager();
 
   bootstrapManager.initialize();
 
@@ -49,6 +52,36 @@ export const MemoryPlugin: Plugin = async (ctx: PluginInput) => {
       if (!memoryContext) return;
       const instructions = getMemoryInstructions();
       output.system.push(memoryContext + instructions);
+    },
+
+    event: async ({ event }) => {
+      if (event.type === "session.idle") {
+        const props = event as any;
+        const sessionId = props.properties?.sessionID;
+        if (!sessionId) return;
+
+        sessionStateManager.incrementIdle(sessionId);
+
+        if (sessionStateManager.shouldPrompt(sessionId)) {
+          sessionStateManager.reset(sessionId);
+          await ctx.client.app.log({
+            body: {
+              service: "memory-plugin",
+              level: "info",
+              message: `Memory check triggered after 3 idle cycles`,
+              extra: { sessionId },
+            },
+          });
+        }
+      }
+
+      if (event.type === "session.deleted") {
+        const props = event as any;
+        const sessionId = props.properties?.sessionID;
+        if (sessionId) {
+          sessionStateManager.cleanup(sessionId);
+        }
+      }
     },
 
     tool: {
