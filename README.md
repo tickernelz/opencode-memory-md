@@ -1,6 +1,6 @@
 # @zhafron/opencode-memory-md
 
-Simple markdown-based memory plugin for OpenCode.
+Markdown-based memory plugin for OpenCode with semantic search and git auto-commit.
 
 ## Installation
 
@@ -11,6 +11,13 @@ Add to your OpenCode configuration at `~/.config/opencode/opencode.json`:
   "plugin": ["@zhafron/opencode-memory-md"]
 }
 ```
+
+## Features
+
+- **Semantic Search** - Vector embeddings using `nomic-embed-text-v1.5` for semantic similarity search
+- **Git Auto-commit** - Automatic commits when session goes idle
+- **Session Event Hooks** - Auto-embed memories on session start
+- **Context Injection** - Automatic injection into system prompt
 
 ## Memory Files
 
@@ -36,8 +43,9 @@ Add to your OpenCode configuration at `~/.config/opencode/opencode.json`:
 | `read` | Read memory file | `target`: memory, identity, user, daily |
 | `write` | Write to memory file | `target`, `content`, `mode`: append/overwrite |
 | `edit` | Edit specific part of file (not daily) | `target`, `oldString`, `newString` |
-| `search` | Search memory files | `query`, `max_results` (optional) |
+| `search` | Search memory files (exact + semantic) | `query`, `max_results` (optional) |
 | `list` | List all files | - |
+| `delete` | Delete a memory file | `target`, `date` (optional for daily) |
 
 **Examples:**
 
@@ -47,8 +55,9 @@ memory --action write --target memory --content "Remember to use PostgreSQL for 
 memory --action write --target identity --content "- **Name**: Jarvis" --mode overwrite
 memory --action write --target daily --content "Fixed critical bug in auth module"
 memory --action edit --target memory --oldString "Project: Auth Service" --newString "Project: Payment Service"
-memory --action search --query "PostgreSQL"
+memory --action search --query "database configuration"
 memory --action list
+memory --action delete --target daily --date 2026-02-28
 ```
 
 ## First Run Flow
@@ -67,6 +76,13 @@ memory --action list
 MEMORY.md, IDENTITY.md, and USER.md are automatically injected into the system prompt at session start.
 
 Daily logs must be accessed via the `memory` tool.
+
+## Dependencies
+
+- `@huggingface/transformers` - Local embedding model
+- `vectra` - Vector database for semantic search
+
+First session will download the embedding model (~70MB) to cache.
 
 ## License
 
