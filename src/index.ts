@@ -3,15 +3,60 @@ import { tool } from "@opencode-ai/plugin";
 import { loadConfig } from "./config.js";
 import { MemoryManager } from "./MemoryManager.js";
 import { BootstrapManager } from "./BootstrapManager.js";
+import { EmbeddingManager } from "./embedding.js";
+import { VectorStore } from "./vectorStore.js";
+import { GitManager } from "./git.js";
 import {
   MEMORY_AWARENESS_INSTRUCTIONS,
   BOOTSTRAP_INSTRUCTIONS,
 } from "./memoryInstructions.js";
+import * as path from "node:path";
+import * as os from "node:os";
 
 export const MemoryPlugin: Plugin = async (ctx: PluginInput) => {
   const config = loadConfig();
   const memoryManager = new MemoryManager(config);
   const bootstrapManager = new BootstrapManager(memoryManager);
+
+  const embeddingCachePath = path.join(
+    os.tmpdir(),
+    "opencode-memory-embeddings",
+  );
+  const vectorStorePath = path.join(config.memoryDir, ".vector-store");
+
+  const embeddingManager = new EmbeddingManager(embeddingCachePath);
+  const vectorStore = new VectorStore(vectorStorePath);
+  vectorStore.setEmbeddingManager(embeddingManager);
+  const gitManager = new GitManager(config.memoryDir);
+
+  let initialized = false;
+
+  const initializeEmbeddings = async (): Promise<void> => {
+    if (initialized) return;
+    try {
+      await embeddingManager.initialize();
+      await vectorStore.initialize();
+      await gitManager.initialize();
+
+      const files = memoryManager.listFiles();
+      const allFiles = [...files.root, ...files.daily];
+
+      for (const file of allFiles) {
+        const filePath =
+          file === "MEMORY.md" || file === "IDENTITY.md" || file === "USER.md"
+            ? path.join(config.memoryDir, file)
+            : path.join(config.memoryDir, "daily", file);
+        const content = memoryManager.readFile(filePath);
+        if (content) {
+          const embedding = await embeddingManager.embedText(content);
+          await vectorStore.upsert(file, content, embedding);
+        }
+      }
+      initialized = true;
+    } catch (error) {
+      console.error("Failed to initialize embeddings:", error);
+    }
+  };
 
   bootstrapManager.initialize();
 
@@ -44,6 +89,20 @@ export const MemoryPlugin: Plugin = async (ctx: PluginInput) => {
   };
 
   return {
+    event: async ({ event }) => {
+      switch (event.type) {
+        case "session.created":
+          await initializeEmbeddings();
+          break;
+        case "session.idle":
+          const hasChanges = await gitManager.hasChanges();
+          if (hasChanges) {
+            await gitManager.commit("Auto-save: session idle");
+          }
+          break;
+      }
+    },
+
     "experimental.chat.system.transform": async (_input, output) => {
       const memoryContext = buildContext();
       if (!memoryContext) return;
@@ -115,11 +174,21 @@ export const MemoryPlugin: Plugin = async (ctx: PluginInput) => {
             case "read":
               return handleRead(args, memoryManager);
             case "write":
-              return handleWrite(args, memoryManager);
+              return handleWrite(
+                args,
+                memoryManager,
+                vectorStore,
+                embeddingManager,
+              );
             case "edit":
               return handleEdit(args, memoryManager);
             case "search":
-              return handleSearch(args, memoryManager);
+              return handleSearch(
+                args,
+                memoryManager,
+                vectorStore,
+                embeddingManager,
+              );
             case "list":
               return handleList(memoryManager);
             default:
@@ -156,10 +225,12 @@ function handleRead(
   }
 }
 
-function handleWrite(
+async function handleWrite(
   params: { target?: string; content?: string; mode?: string; date?: string },
   memoryManager: MemoryManager,
-): string {
+  vectorStore: VectorStore,
+  embeddingManager: EmbeddingManager,
+): Promise<string> {
   const { target, content, mode, date } = params;
 
   if (!content) {
@@ -187,6 +258,18 @@ function handleWrite(
       );
     } else {
       memoryManager.appendFile(filePath, content);
+    }
+
+    if (vectorStore.isReady() && embeddingManager.isInitialized()) {
+      try {
+        const fullContent = memoryManager.readFile(filePath);
+        if (fullContent) {
+          const embedding = await embeddingManager.embedText(fullContent);
+          await vectorStore.upsert(displayName, fullContent, embedding);
+        }
+      } catch (embedError) {
+        console.error("Failed to embed content:", embedError);
+      }
     }
 
     const reflectionPrompt = [
@@ -236,26 +319,55 @@ function handleEdit(
   }
 }
 
-function handleSearch(
+async function handleSearch(
   params: { query?: string; max_results?: number },
   memoryManager: MemoryManager,
-): string {
+  vectorStore: VectorStore,
+  embeddingManager: EmbeddingManager,
+): Promise<string> {
   const { query, max_results } = params;
 
   if (!query) {
     return "Error: query is required for search action.";
   }
 
-  const results = memoryManager.searchFiles(query, max_results ?? 20);
+  const exactResults = memoryManager.searchFiles(query, max_results ?? 20);
 
-  if (results.length === 0) {
+  let semanticResults: { id: string; text: string; score: number }[] = [];
+  if (vectorStore.isReady() && embeddingManager.isInitialized()) {
+    try {
+      semanticResults = await vectorStore.search(query, max_results ?? 20);
+    } catch (error) {
+      console.error("Semantic search failed:", error);
+    }
+  }
+
+  if (exactResults.length === 0 && semanticResults.length === 0) {
     return `No results for "${query}".`;
   }
 
-  const output = results
-    .map((r) => `${r.file}:${r.line}: ${r.text}`)
-    .join("\n");
-  return `Found ${results.length} results:\n\n${output}`;
+  const parts: string[] = [];
+
+  if (exactResults.length > 0) {
+    parts.push(
+      `## Exact Matches (${exactResults.length})\n${exactResults
+        .map((r) => `${r.file}:${r.line}: ${r.text}`)
+        .join("\n")}`,
+    );
+  }
+
+  if (semanticResults.length > 0) {
+    parts.push(
+      `## Semantic Matches (${semanticResults.length})\n${semanticResults
+        .map(
+          (r) =>
+            `[score: ${r.score.toFixed(3)}] ${r.id}: ${r.text.substring(0, 200)}...`,
+        )
+        .join("\n")}`,
+    );
+  }
+
+  return `Found results:\n\n${parts.join("\n\n")}`;
 }
 
 function handleList(memoryManager: MemoryManager): string {
