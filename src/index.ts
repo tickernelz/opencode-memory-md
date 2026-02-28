@@ -121,6 +121,7 @@ export const MemoryPlugin: Plugin = async (ctx: PluginInput) => {
           "- `edit`: Edit a specific part of memory/identity/user file (not daily). AI must read file first to get exact oldString.",
           "- `search`: Search across all memory files",
           "- `list`: List all memory files",
+          "- `delete`: Delete a memory file",
           "",
           "**Targets:**",
           "- `memory`: MEMORY.md - Long-term memory (crucial facts, decisions, preferences)",
@@ -130,7 +131,7 @@ export const MemoryPlugin: Plugin = async (ctx: PluginInput) => {
         ].join("\n"),
         args: {
           action: tool.schema
-            .enum(["read", "write", "edit", "search", "list"])
+            .enum(["read", "write", "edit", "search", "list", "delete"])
             .describe("Action to perform"),
           target: tool.schema
             .enum(["memory", "identity", "user", "daily"])
@@ -191,6 +192,8 @@ export const MemoryPlugin: Plugin = async (ctx: PluginInput) => {
               );
             case "list":
               return handleList(memoryManager);
+            case "delete":
+              return handleDelete(args, memoryManager, vectorStore);
             default:
               return `Unknown action: ${args.action}`;
           }
@@ -394,6 +397,36 @@ function handleList(memoryManager: MemoryManager): string {
   }
 
   return parts.join("\n\n");
+}
+
+function handleDelete(
+  params: { target?: string; date?: string },
+  memoryManager: MemoryManager,
+  vectorStore: VectorStore,
+): string {
+  const { target, date } = params;
+
+  if (!target) {
+    return "Error: target is required for delete action.";
+  }
+
+  try {
+    const { filePath, displayName } = memoryManager.getPathForTarget(
+      target,
+      date,
+    );
+    memoryManager.deleteFile(filePath);
+
+    if (vectorStore.isReady()) {
+      vectorStore.delete(displayName).catch(console.error);
+    }
+
+    return `Deleted ${displayName}`;
+  } catch (error) {
+    return error instanceof Error
+      ? error.message
+      : `Failed to delete ${target}`;
+  }
 }
 
 export default MemoryPlugin;
